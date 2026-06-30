@@ -1,0 +1,153 @@
+# ============================================================
+# STEP 5: SQL ANALYSIS LAYER
+# Diabetes Risk Predictor Project
+# ============================================================
+# We load the data into SQLite and run meaningful SQL queries
+# to extract insights — showing both Python and SQL skills
+# ============================================================
+
+import pandas as pd
+import sqlite3
+import matplotlib.pyplot as plt
+import seaborn as sns
+
+sns.set_style("whitegrid")
+plt.rcParams['figure.dpi'] = 120
+
+# Load enriched dataset
+df = pd.read_csv('diabetes_with_segments.csv')
+
+# -------------------------------------------------------
+# SETUP: Load into SQLite database
+# -------------------------------------------------------
+conn = sqlite3.connect('diabetes_analysis.db')
+df.to_sql('patients', conn, if_exists='replace', index=False)
+print("✅ Data loaded into SQLite database: 'diabetes_analysis.db'")
+print(f"   Table: patients | Rows: {len(df)}")
+
+
+# -------------------------------------------------------
+# HELPER FUNCTION: Run SQL and show results
+# -------------------------------------------------------
+def run_query(title, sql):
+    print(f"\n{'='*55}")
+    print(f"QUERY: {title}")
+    print(f"{'='*55}")
+    result = pd.read_sql_query(sql, conn)
+    print(result.to_string(index=False))
+    return result
+
+
+# -------------------------------------------------------
+# QUERY 1: Overall diabetic vs non-diabetic count
+# -------------------------------------------------------
+run_query("Overall Diabetes Distribution", """
+    SELECT
+        CASE WHEN Outcome = 1 THEN 'Diabetic' ELSE 'Non-Diabetic' END AS Status,
+        COUNT(*) AS Patient_Count,
+        ROUND(COUNT(*) * 100.0 / (SELECT COUNT(*) FROM patients), 1) AS Percentage
+    FROM patients
+    GROUP BY Outcome
+    ORDER BY Outcome DESC;
+""")
+
+
+# -------------------------------------------------------
+# QUERY 2: Diabetes rate by age group
+# -------------------------------------------------------
+age_data = run_query("Diabetes Rate by Age Group", """
+    SELECT
+        CASE
+            WHEN Age < 30 THEN '21-29'
+            WHEN Age < 40 THEN '30-39'
+            WHEN Age < 50 THEN '40-49'
+            ELSE '50+'
+        END AS Age_Group,
+        COUNT(*) AS Total_Patients,
+        SUM(Outcome) AS Diabetic_Count,
+        ROUND(SUM(Outcome) * 100.0 / COUNT(*), 1) AS Diabetes_Rate_Pct,
+        ROUND(AVG(Glucose), 1) AS Avg_Glucose,
+        ROUND(AVG(BMI), 1) AS Avg_BMI
+    FROM patients
+    GROUP BY Age_Group
+    ORDER BY Age_Group;
+""")
+
+
+# -------------------------------------------------------
+# QUERY 3: Risk segment analysis
+# -------------------------------------------------------
+run_query("Patient Segments — Clinical Profile", """
+    SELECT
+        Risk_Segment,
+        COUNT(*) AS Patient_Count,
+        ROUND(AVG(Glucose), 1) AS Avg_Glucose,
+        ROUND(AVG(BMI), 1) AS Avg_BMI,
+        ROUND(AVG(Age), 1) AS Avg_Age,
+        ROUND(AVG(Insulin), 1) AS Avg_Insulin,
+        ROUND(SUM(Outcome) * 100.0 / COUNT(*), 1) AS Diabetes_Rate_Pct
+    FROM patients
+    GROUP BY Risk_Segment
+    ORDER BY Diabetes_Rate_Pct DESC;
+""")
+
+
+# -------------------------------------------------------
+# QUERY 4: High-risk patients who are NOT yet diabetic
+# (Most valuable for early intervention!)
+# -------------------------------------------------------
+run_query("High-Risk Non-Diabetic Patients (Early Intervention Candidates)", """
+    SELECT COUNT(*) AS At_Risk_Non_Diabetic,
+           ROUND(AVG(Age), 1) AS Avg_Age,
+           ROUND(AVG(Glucose), 1) AS Avg_Glucose,
+           ROUND(AVG(BMI), 1) AS Avg_BMI
+    FROM patients
+    WHERE Risk_Segment = 'High Risk'
+      AND Outcome = 0;
+""")
+
+
+# -------------------------------------------------------
+# QUERY 5: BMI category breakdown
+# -------------------------------------------------------
+run_query("Diabetes Rate by BMI Category (WHO Classification)", """
+    SELECT
+        CASE
+            WHEN BMI < 18.5 THEN 'Underweight (<18.5)'
+            WHEN BMI < 25.0 THEN 'Normal (18.5-24.9)'
+            WHEN BMI < 30.0 THEN 'Overweight (25-29.9)'
+            ELSE 'Obese (30+)'
+        END AS BMI_Category,
+        COUNT(*) AS Patients,
+        ROUND(SUM(Outcome) * 100.0 / COUNT(*), 1) AS Diabetes_Rate_Pct
+    FROM patients
+    GROUP BY BMI_Category
+    ORDER BY Diabetes_Rate_Pct DESC;
+""")
+
+
+# -------------------------------------------------------
+# PLOT: Age Group Diabetes Rate (from SQL query above)
+# -------------------------------------------------------
+fig, ax = plt.subplots(figsize=(8, 4))
+ax.bar(age_data['Age_Group'], age_data['Diabetes_Rate_Pct'],
+       color=['#66BB6A', '#FFA726', '#EF5350', '#B71C1C'], edgecolor='black', width=0.5)
+
+for i, (bar, val) in enumerate(zip(ax.patches, age_data['Diabetes_Rate_Pct'])):
+    ax.text(bar.get_x() + bar.get_width()/2, bar.get_height() + 0.5,
+            f'{val}%', ha='center', fontweight='bold')
+
+ax.set_title('Diabetes Rate by Age Group (SQL Query Result)', fontsize=13, fontweight='bold')
+ax.set_ylabel('Diabetes Rate (%)')
+ax.set_xlabel('Age Group')
+plt.tight_layout()
+plt.savefig('plot11_age_group_diabetes.png')
+plt.show()
+print("✅ Saved: plot11_age_group_diabetes.png")
+
+conn.close()
+print("\n✅ SQL analysis complete. Database connection closed.")
+print("\n📌 KEY INSIGHT FROM SQL:")
+print("   Patients aged 50+ have the highest diabetes rate.")
+print("   High-Risk Non-Diabetic patients are prime candidates")
+print("   for early intervention programs.")
