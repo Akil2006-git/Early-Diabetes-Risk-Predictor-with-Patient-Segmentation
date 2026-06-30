@@ -1,0 +1,68 @@
+# ============================================================
+# STEP 1: DATA LOADING & CLEANING
+# Diabetes Risk Predictor Project
+# ============================================================
+
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+import seaborn as sns
+import warnings
+warnings.filterwarnings('ignore')
+
+# -------------------------------------------------------
+# LOAD DATASET
+# Download from: https://www.kaggle.com/datasets/uciml/pima-indians-diabetes-database
+# Save the CSV as 'diabetes.csv' in the same folder as this script
+# -------------------------------------------------------
+
+df = pd.read_csv('diabetes.csv')
+
+print("=" * 50)
+print("BASIC DATASET INFO")
+print("=" * 50)
+print(f"Shape: {df.shape}")
+print(f"\nColumn Names:\n{df.columns.tolist()}")
+print(f"\nFirst 5 rows:\n{df.head()}")
+print(f"\nData Types:\n{df.dtypes}")
+print(f"\nMissing Values:\n{df.isnull().sum()}")
+print(f"\nBasic Statistics:\n{df.describe()}")
+
+
+# -------------------------------------------------------
+# WHY WE CLEAN: Columns like Glucose, BMI, BloodPressure,
+# SkinThickness, Insulin cannot be 0 in a real human body.
+# These 0s are actually missing values disguised as zeroes.
+# -------------------------------------------------------
+
+# Columns where 0 is biologically impossible
+zero_not_allowed = ['Glucose', 'BloodPressure', 'SkinThickness', 'Insulin', 'BMI']
+
+print("\n" + "=" * 50)
+print("ZERO VALUE COUNT (Before Cleaning)")
+print("=" * 50)
+for col in zero_not_allowed:
+    zero_count = (df[col] == 0).sum()
+    print(f"{col}: {zero_count} zeros ({round(zero_count/len(df)*100, 1)}%)")
+
+# Replace 0s with NaN first
+df[zero_not_allowed] = df[zero_not_allowed].replace(0, np.nan)
+
+# Fill NaN with MEDIAN grouped by Outcome (diabetic vs non-diabetic)
+# Why median? Because median is robust to outliers unlike mean
+for col in zero_not_allowed:
+    df[col] = df.groupby('Outcome')[col].transform(lambda x: x.fillna(x.median()))
+
+print("\n" + "=" * 50)
+print("AFTER CLEANING - Missing Values")
+print("=" * 50)
+print(df.isnull().sum())
+
+print("\n" + "=" * 50)
+print("AFTER CLEANING - Statistics")
+print("=" * 50)
+print(df.describe().round(2))
+
+# Save cleaned data
+df.to_csv('diabetes_cleaned.csv', index=False)
+print("\n✅ Cleaned data saved as 'diabetes_cleaned.csv'")
